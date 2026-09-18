@@ -28,7 +28,7 @@ body{font-family:Arial,Helvetica,sans-serif;color:#ffad18}
 <div class="board">
   <div class="top"><div>LINIE</div><div>ZIEL</div><div class="right">ABFAHRT IN</div></div>
   <div class="screen"><div class="rows" id="rows"></div></div>
-  <div class="info"><span id="clock">--:--:--</span><span class="weather" id="weather">☁ --°C</span><span class="quote" id="quote">„Jeder Weg beginnt mit dem ersten Schritt.“</span></div>
+  <div class="info"><span id="clock">--:--:--</span><span class="weather" id="weather">☁︎ --°C</span><span class="quote" id="quote">„Jeder Weg beginnt mit dem ersten Schritt.“</span></div>
   <button class="fs" id="fs" aria-label="Vollbild" title="Vollbild">⛶</button>
 </div>
 <script>
@@ -49,7 +49,7 @@ function sortTime(a,b){return ts(a)-ts(b)}
 function updateClock(){ $("clock").textContent=new Date().toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",second:"2-digit"}); }
 updateClock();setInterval(updateClock,1000);
 
-async function updateWeather(){try{const r=await fetch("https://api.open-meteo.com/v1/forecast?latitude=52.56&longitude=13.29&current=temperature_2m,weather_code&timezone=Europe%2FBerlin",{cache:"no-store"});const d=await r.json();const c=d.current.weather_code;const icon=c===0?"☀":c<=3?"☁":c<=48?"≋":c<=67?"☂":c<=77?"❄":"☂";$("weather").textContent=`${icon} ${Math.round(d.current.temperature_2m)}°C`;}catch(e){$("weather").textContent="☁ --°C";}}
+async function updateWeather(){try{const r=await fetch("https://api.open-meteo.com/v1/forecast?latitude=52.56&longitude=13.29&current=temperature_2m,weather_code&timezone=Europe%2FBerlin",{cache:"no-store"});const d=await r.json();const c=d.current.weather_code;const icon=c===0?"☀︎":c<=3?"☁︎":c<=48?"≋":c<=67?"☂︎":c<=77?"❄︎":"☂︎";$("weather").textContent=`${icon} ${Math.round(d.current.temperature_2m)}°C`;}catch(e){$("weather").textContent="☁︎ --°C";}}
 updateWeather();setInterval(updateWeather,600000);
 
 const quotes=["„Jeder Weg beginnt mit dem ersten Schritt.“","„Der nächste Schritt bringt dich weiter.“","„Neue Wege, neue Möglichkeiten.“","„Manchmal ist der Weg das Ziel.“","„Heute ist ein guter Tag für einen neuen Weg.“","„Gute Reise!“","„Jeder Tag ist eine neue Reise.“"];
@@ -61,9 +61,28 @@ updateQuote();setInterval(updateQuote,1000);
 function render(){const list=departures.filter(future).sort(sortTime).slice(0,7);$("rows").innerHTML=list.length?list.map(x=>{const bus=x.kind==="u6";return `<div class="row"><div class="line"><span class="badge">${bus?"U6":"S25"}</span></div><div class="dest">${bus?"KURT-SCHUMACHER-PLATZ":"TELTOW STADT"}</div><div class="count">${mins(x)<=0?"JETZT":mins(x)+" MIN"}</div></div>`}).join(""):`<div class="message">LIVE-DATEN NICHT VERFÜGBAR</div>`;}
 
 async function getDepartures(stop){
- const url=`${API}/stops/${stop}/departures?duration=120&results=100&remarks=true&language=de`;
- const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error(`HTTP ${r.status}`);
- const data=await r.json();return Array.isArray(data)?data:(Array.isArray(data.departures)?data.departures:[]);
+ const path=`/stops/${stop}/departures?duration=120&results=100&remarks=true&language=de`;
+ const hosts=["https://v6.vbb.transport.rest","https://v6.vbb.transport.rest"];
+ let lastErr=null;
+ for(const host of hosts){
+  const url=host+path;
+  try{
+   if(window.fetch){
+    const r=await fetch(url,{cache:"no-store",mode:"cors"});
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    const data=await r.json();
+    return Array.isArray(data)?data:(Array.isArray(data.departures)?data.departures:[]);
+   }
+   const data=await new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open("GET",url,true);xhr.timeout=12000;
+    xhr.onreadystatechange=function(){if(xhr.readyState===4){if(xhr.status>=200&&xhr.status<300){try{resolve(JSON.parse(xhr.responseText));}catch(e){reject(e);}}else reject(new Error("HTTP "+xhr.status));}};
+    xhr.ontimeout=()=>reject(new Error("timeout"));xhr.onerror=()=>reject(new Error("network"));xhr.send();
+   });
+   return Array.isArray(data)?data:(Array.isArray(data.departures)?data.departures:[]);
+  }catch(e){lastErr=e;}
+ }
+ throw lastErr||new Error("API unavailable");
 }
 async function refresh(){try{
  const [s,b]=await Promise.all([getDepartures(S_TEGEL),getDepartures(U_ALT_TEGEL)]);
